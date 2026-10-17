@@ -227,48 +227,57 @@ function statWin(st, draw, r) {
 }
 
 /* ---------- Table layout ----------
-   Works from the size of the play area and whether it is landscape. Portrait puts stock, waste and
-   the four foundations in one row above seven columns. Landscape puts stock and waste in a rail on
-   the left (with the buttons under them), the foundations in a rail on the right, and the columns between. */
+   Works from the size of the play area, whether it is landscape and which side the stock is on.
+   Portrait puts stock, waste and the four foundations in one row above seven columns. Landscape puts
+   stock and waste in a rail on one side, the foundations in a rail on the other, and the columns between.
+   With flip the stock side moves to the right (for right-handed play) and the foundations to the left;
+   the seven columns never change places. L.dir says which way the draw-3 fan opens: +1 to the right of the
+   waste slot, -1 to its left, so the fan always opens towards the middle of the table. */
 const CARD_RATIO = 1.4;
+const FAN = 0.26;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function layout(o) {
-  const W = o.W, H = o.H, land = !!o.land, R = CARD_RATIO;
+  const W = o.W, H = o.H, land = !!o.land, flip = !!o.flip, R = CARD_RATIO;
   const base = land ? { d: 0.12, u: 0.30, f: 0.85 } : { d: 0.17, u: 0.36, f: 0.80 };
   // tallest column possible: six face-down cards under a full king-to-ace run, squeezed to its floor
   const worstK = 1 + 6 * base.d * base.f + 12 * base.u * base.f;
+  const dir = flip ? -1 : 1;
   let L;
   if (!land) {
-    const pad = clamp(W * 0.02, 6, 16), gap = clamp(W * 0.016, 4, 12), dockH = o.dockH != null ? o.dockH : 60, rowK = 0.16;
+    const pad = clamp(W * 0.02, 6, 16), gap = clamp(W * 0.016, 4, 12), rowK = 0.16;
     const wW = (W - 2 * pad - 6 * gap) / 7;
-    const hMax = (H - pad - dockH - 4) / (1 + rowK + worstK);
+    const hMax = (H - 2 * pad) / (1 + rowK + worstK);
     const w = Math.max(10, Math.min(wW, hMax / R, 120)), h = w * R;
     const pitch = (W - 2 * pad - w) / 6, x = (c) => pad + c * pitch;
-    const tabY = pad + h + rowK * h, tabBottom = H - dockH - 4;
-    L = { land, w, h, pad, tabY, tabBottom, fan: w * 0.26,
-      stock: { x: x(0), y: pad }, waste: { x: x(1), y: pad },
-      found: [3, 4, 5, 6].map((c) => ({ x: x(c), y: pad })),
+    const tabY = pad + h + rowK * h, tabBottom = H - pad;
+    const cs = flip ? 6 : 0, cw = flip ? 5 : 1, cf = flip ? [0, 1, 2, 3] : [3, 4, 5, 6];
+    L = { land, flip, dir, w, h, pad, tabY, tabBottom, fan: w * FAN,
+      stock: { x: x(cs), y: pad }, waste: { x: x(cw), y: pad },
+      found: cf.map((c) => ({ x: x(c), y: pad })),
       tab: [0, 1, 2, 3, 4, 5, 6].map((c) => ({ x: x(c), y: tabY })),
-      pitch, dock: { x: 0, y: H - dockH, w: W, h: dockH } };
+      pitch };
   } else {
-    const pad = clamp(H * 0.035, 6, 14), g = 10, gv = 0.08;
-    let w = Math.min((H - 2 * pad) / worstK / R, (H - 2 * pad) / (4 + 3 * gv) / R, 120), railL, tabW;
+    const pad = clamp(H * 0.035, 6, 14), g = 10, gv = 0.08, railK = 1 + 2 * FAN;
+    let w = Math.min((H - 2 * pad) / worstK / R, (H - 2 * pad) / (4 + 3 * gv) / R, 120);
     for (let n = 0; n < 3; n++) {
-      railL = Math.max(1.52 * w, 104);
-      tabW = W - 2 * pad - railL - w - 2 * g;
-      w = Math.max(10, Math.min(w, (tabW - 24) / 7));
+      const tw = W - 2 * pad - railK * w - w - 2 * g;
+      w = Math.max(10, Math.min(w, (tw - 24) / 7));
     }
-    const h = w * R;
-    const tabUsed = Math.min(tabW, w * 1.55 * 6 + w);
+    const h = w * R, railL = railK * w, tabW = W - 2 * pad - railL - w - 2 * g;
+    const tabUsed = Math.min(tabW, w * 1.7 * 6 + w);
     const total = railL + g + tabUsed + g + w, offX = pad + (W - 2 * pad - total) / 2;
-    const pitch = (tabUsed - w) / 6, tabX = offX + railL + g, foundX = tabX + tabUsed + g;
-    const wasteY = pad + h + gv * h, dockY = wasteY + h + 8;
-    L = { land, w, h, pad, tabY: pad, tabBottom: H - pad, fan: w * 0.26,
-      stock: { x: offX, y: pad }, waste: { x: offX, y: wasteY },
+    const pitch = (tabUsed - w) / 6;
+    const wasteY = pad + h + gv * h, fan = w * FAN;
+    let railX, tabX, foundX;
+    if (!flip) { railX = offX; tabX = railX + railL + g; foundX = tabX + tabUsed + g; }
+    else { foundX = offX; tabX = foundX + w + g; railX = tabX + tabUsed + g; }
+    const sx = flip ? railX + 2 * fan : railX;   // flipped: the top waste card sits at the slot and older ones open to its left
+    L = { land, flip, dir, w, h, pad, tabY: pad, tabBottom: H - pad, fan,
+      stock: { x: sx, y: pad }, waste: { x: sx, y: wasteY },
       found: [0, 1, 2, 3].map((q) => ({ x: foundX, y: pad + q * (h + gv * h) })),
       tab: [0, 1, 2, 3, 4, 5, 6].map((c) => ({ x: tabX + c * pitch, y: pad })),
-      pitch, dock: { x: offX, y: dockY, w: railL, h: Math.max(0, H - pad - dockY) } };
+      pitch, rail: { x: railX, w: railL } };
   }
   // use spare height for roomier columns, but never so much that the tallest column stops fitting
   const room = L.tabBottom - L.tabY - L.h;
@@ -279,6 +288,13 @@ function layout(o) {
   L.floor = base.f;
   L.fs = Math.max(9, Math.min(L.w * 0.31, L.u * base.f * 0.9));
   return L;
+}
+
+// x of a waste card: rel = 0 is the top card, vis how many are fanned out (1 for draw 1, up to 3 for draw 3).
+// Cards below the fan sit under the oldest fanned card.
+function wasteX(L, rel, vis) {
+  const r = Math.min(rel, Math.max(0, vis - 1));
+  return L.dir > 0 ? L.waste.x + (vis - 1 - r) * L.fan : L.waste.x - r * L.fan;
 }
 
 // Heights of the cards in one column: n cards, the top k face up. Squeezes the gaps if the column would run out of room.
@@ -294,5 +310,5 @@ function pileYs(L, n, k) {
 
 return { RANK_LABEL, RANK_NAME, SUIT_NAME, rank, suit, isRed, cardName, mulberry32, shuffled, deal, clone, movingCards, fitsTab, fitsFound,
   canMove, applyMove, drawCards, canDraw, isPointless, tapTarget, legalMoves, canAutoComplete, autoStep, isWon, timeBonus, validate,
-  newStats, normStats, statStart, statAbandon, statWin, layout, pileYs, CARD_RATIO };
+  newStats, normStats, statStart, statAbandon, statWin, layout, pileYs, wasteX, CARD_RATIO };
 });
