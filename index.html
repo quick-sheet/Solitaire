@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Solitaire</title>
 <meta name="description" content="Klondike solitaire for your phone, in portrait or landscape. Draw one or draw three.">
-<meta name="theme-color" content="#0F1528">
+<meta name="theme-color" content="#0C5A35">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -16,9 +16,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600&display=swap">
+<script>try{var t=(JSON.parse(localStorage.getItem('sol.settings')||'null')||{}).theme||'standard';if(t!=='twilight')document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='standard'}</script>
 <style>
 :root {
   --bg: #0F1528;
+  --bgi: none;
   --raise: #161E37;
   --raise-2: #1D2645;
   --line: rgba(205, 214, 245, .09);
@@ -89,11 +91,23 @@
   color-scheme: light;
 }
 
+:root[data-theme="standard"] {
+  --bg: #0C5A35; --raise: #0A4A2C; --raise-2: #116237;
+  --line: rgba(255, 255, 255, .10); --line-2: rgba(255, 255, 255, .20);
+  --ink: #F3F1E6; --ink-2: #CFE2D5; --ink-3: #B0CDB9;
+  --sun: #F2C063; --sun-soft: rgba(242, 192, 99, .22); --on-sun: #1D1505;
+  --dome-in: #083E25; --dome-out: #168049;
+  --card-shadow: rgba(0, 0, 0, .5);
+  --bgi: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .085 0'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23n)'/%3E%3C/svg%3E"), radial-gradient(ellipse 120% 90% at 50% 36%, #168049 0%, #0E6439 46%, #08452A 100%);
+}
+:root[data-theme="standard"] .slot { border-color: rgba(0, 0, 0, .30); background: rgba(0, 0, 0, .14); }
+:root[data-theme="standard"] .slot[data-slot="waste"], :root[data-theme="standard"] .slot[data-slot="tab"] { background: transparent; }
+
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; height: 100%; background: var(--bg); overscroll-behavior: none; }
+html { -webkit-text-size-adjust: 100%; height: 100%; background-color: var(--bg); background-image: var(--bgi); overscroll-behavior: none; }
 body {
   margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none;
-  background: var(--bg); color: var(--ink);
+  background-color: var(--bg); background-image: var(--bgi); color: var(--ink);
   font: 400 16px/1.45 var(--sans);
   -webkit-font-smoothing: antialiased;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
@@ -149,20 +163,26 @@ button { background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-h
 .card.up .in { transform: none; }
 .card .front, .card .back { position: absolute; inset: 0; border-radius: var(--cr); backface-visibility: hidden; -webkit-backface-visibility: hidden;
   box-shadow: 0 0 0 1px var(--card-edge), 0 1px 3px var(--card-shadow); }
-.card .front { background: var(--card); color: var(--card-blk); overflow: hidden; }
+.card .front { background: var(--card); color: var(--card-blk); overflow: hidden;
+  --y0: calc(var(--ch) * .055 + var(--fs) * 1.16); }   /* height of the small corner suit's centre: the top row of pips lines up with it */
 .card .front.red { color: var(--card-red); }
 .card .back { transform: rotateY(180deg); background: var(--bk) center / 100% 100% no-repeat; }
-.idx { position: absolute; left: calc(var(--cw) * .09); top: calc(var(--ch) * .05); display: flex; align-items: center; gap: calc(var(--fs) * .14);
-  font: 600 var(--fs)/1 var(--sans); letter-spacing: -.03em; }
-.idx svg { width: calc(var(--fs) * .88); height: calc(var(--fs) * .88); fill: currentColor; flex: none; }
-.pip { position: absolute; width: calc(var(--cw) * .21); height: calc(var(--cw) * .21); fill: currentColor; transform: translate(-50%, -50%); }
+/* Corner index as on a printed deck: rank at the top left with a small suit under it, and the same turned upside down at the bottom right.
+   Both sit inside a white border (7% of the width from the side, 5.5% of the height from the end), as on a real card. */
+.idx { position: absolute; left: calc(var(--cw) * .07); top: calc(var(--ch) * .055); display: flex; flex-direction: column; align-items: center;
+  font: 600 var(--fs)/.78 var(--sans); letter-spacing: -.04em; }
+.idx > span { display: block; line-height: calc(var(--fs) * .78); }
+.idx svg { width: calc(var(--fs) * .56); height: calc(var(--fs) * .56); margin-top: calc(var(--fs) * .1); fill: currentColor; flex: none; }
+.idx.t > span { font-size: .8em; letter-spacing: -.12em; }
+.idx.br { left: auto; top: auto; right: calc(var(--cw) * .07); bottom: calc(var(--ch) * .055); transform: rotate(180deg); }
+/* Pips: --v runs from 0 (the top row, level with the top corner suit) to 1 (the bottom row, level with the bottom corner suit) */
+.pip { position: absolute; top: calc(var(--y0) + (var(--ch) - 2 * var(--y0)) * var(--v, 0)); width: calc(var(--cw) * var(--pk, .18)); height: calc(var(--cw) * var(--pk, .18));
+  fill: currentColor; transform: translate(-50%, -50%); }
 .pip.flip { transform: translate(-50%, -50%) rotate(180deg); }
-.pip.ace { width: calc(var(--cw) * .54); height: calc(var(--cw) * .54); }
-.court { position: absolute; left: 14%; right: 14%; top: 29%; bottom: 7%; }
+.pip.ace { --pk: .5; top: 50%; }
+/* Court panel: its top edge is level with the top of the corner number, its sides inside the white border, notched round the two indexes */
+.court { position: absolute; left: 13%; right: 13%; top: 5.5%; bottom: 5.5%; }
 .court .fig { position: absolute; inset: 0; width: 100%; height: 100%; }
-.court .cs { position: absolute; width: calc(var(--cw) * .13); height: calc(var(--cw) * .13); fill: currentColor; }
-.court .cs.tl { left: 5%; top: 4%; }
-.court .cs.br { right: 5%; bottom: 4%; transform: rotate(180deg); }
 .card.drag, .card.drag .in { transition: none; }
 .card.drag .front { box-shadow: 0 0 0 1px var(--card-edge), 0 8px 18px var(--card-shadow); }
 .board.noanim .card, .board.noanim .card .in { transition: none !important; }
@@ -261,7 +281,7 @@ dialog.sheet::backdrop { background: rgba(4, 6, 14, .62); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 :root[data-o="l"] .toast { bottom: calc(18px + env(safe-area-inset-bottom)); }
 
-/* Short screens (a phone on its side): sheets and panels use the full height and the stats sit in two columns */
+/* Narrow phones: a little less padding so the title and four icons fit */
 @media (max-width: 359px) {
   .top { padding-left: 12px; padding-right: 12px; }
   .icon-btn { width: 38px; height: 38px; }
@@ -269,6 +289,7 @@ dialog.sheet::backdrop { background: rgba(4, 6, 14, .62); }
   .brand { padding-right: 4px; }
   .where { font-size: 12px; }
 }
+/* Short screens (a phone on its side): sheets and panels use the full height and the stats sit in two columns */
 @media (max-height: 460px) {
   dialog.sheet { max-height: calc(100vh - 8px); max-width: 38rem; }
   .sheet-in { padding: 8px 22px calc(14px + env(safe-area-inset-bottom)); }
@@ -294,9 +315,10 @@ dialog.sheet::backdrop { background: rgba(4, 6, 14, .62); }
     <symbol id="s2" viewBox="0 0 24 24"><circle cx="12" cy="7.100" r="4.500"/><circle cx="6.900" cy="14.200" r="4.500"/><circle cx="17.100" cy="14.200" r="4.500"/><path d="M12 11.500c-.1 3.600-1 6.600-3.200 9.300h6.400c-2.200-2.700-3.100-5.700-3.200-9.300Z"/></symbol>
     <symbol id="s3" viewBox="0 0 24 24"><path d="M12 2 19.800 12 12 22 4.200 12Z"/></symbol>
 
-<symbol id="court-k" viewBox="0 0 60 76"><rect x=".5" y=".5" width="59" height="75" rx="3" style="fill:var(--gold);fill-opacity:var(--court-tint)" stroke="currentColor" stroke-opacity=".65" stroke-width=".9"/><path d="M3 38h54" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><use href="#hk"/><use href="#hk" transform="rotate(180 30 38)"/></symbol>
-<symbol id="court-q" viewBox="0 0 60 76"><rect x=".5" y=".5" width="59" height="75" rx="3" style="fill:var(--gold);fill-opacity:var(--court-tint)" stroke="currentColor" stroke-opacity=".65" stroke-width=".9"/><path d="M3 38h54" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><use href="#hq"/><use href="#hq" transform="rotate(180 30 38)"/></symbol>
-<symbol id="court-j" viewBox="0 0 60 76"><rect x=".5" y=".5" width="59" height="75" rx="3" style="fill:var(--gold);fill-opacity:var(--court-tint)" stroke="currentColor" stroke-opacity=".65" stroke-width=".9"/><path d="M3 38h54" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><use href="#hj"/><use href="#hj" transform="rotate(180 30 38)"/></symbol>
+<!-- court panels: the figure (drawn on a 60 x 76 grid) is scaled to fill the taller notched panel, shoulders running off its sides -->
+<symbol id="court-k" viewBox="0 0 60 101"><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" style="fill:var(--gold);fill-opacity:var(--court-tint)"/><path d="M2 50.5h56" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><svg width="60" height="101" viewBox="0 0 60 76" preserveAspectRatio="xMidYMid slice"><use href="#hk"/><use href="#hk" transform="rotate(180 30 38)"/></svg><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" fill="none" stroke="currentColor" stroke-opacity=".65" stroke-width=".9" stroke-linejoin="round"/></symbol>
+<symbol id="court-q" viewBox="0 0 60 101"><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" style="fill:var(--gold);fill-opacity:var(--court-tint)"/><path d="M2 50.5h56" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><svg width="60" height="101" viewBox="0 0 60 76" preserveAspectRatio="xMidYMid slice"><use href="#hq"/><use href="#hq" transform="rotate(180 30 38)"/></svg><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" fill="none" stroke="currentColor" stroke-opacity=".65" stroke-width=".9" stroke-linejoin="round"/></symbol>
+<symbol id="court-j" viewBox="0 0 60 101"><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" style="fill:var(--gold);fill-opacity:var(--court-tint)"/><path d="M2 50.5h56" stroke="currentColor" stroke-opacity=".4" stroke-width=".6"/><svg width="60" height="101" viewBox="0 0 60 76" preserveAspectRatio="xMidYMid slice"><use href="#hj"/><use href="#hj" transform="rotate(180 30 38)"/></svg><path d="M10 .5H59.5V70.5H50V100.5H.5V30.5H10Z" fill="none" stroke="currentColor" stroke-opacity=".65" stroke-width=".9" stroke-linejoin="round"/></symbol>
 <path id="body" d="M4 38 6.500 31.500Q10 26.500 21 26H39Q50 26.500 53.500 31.500L56 38Z"/>
 <g id="hk">
   <use href="#body" fill="currentColor"/>
@@ -376,13 +398,13 @@ dialog.sheet::backdrop { background: rgba(4, 6, 14, .62); }
 <dialog class="sheet" id="sheet" aria-labelledby="sheetTitle"><div class="sheet-in" id="sheetBody"></div></dialog>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="core.js?v=2"></script>
+<script src="core.js?v=4"></script>
 <script>
 (() => {
 'use strict';
 const C = window.Sol;
 // A new page that meets an old core.js (a phone holding on to an old copy) reloads once, then says what to do instead of showing a blank screen.
-if (!C || typeof C.wasteX !== 'function') {
+if (!C || C.REV !== 4) {
   let again = false;
   try { again = sessionStorage.getItem('sol.reloaded') === '1'; sessionStorage.setItem('sol.reloaded', '1'); } catch {}
   if (!again) { location.reload(); return; }
@@ -393,6 +415,7 @@ try { sessionStorage.removeItem('sol.reloaded'); } catch {}
 
 /* ---------- Constants ---------- */
 const THEMES = [
+  { id: 'standard', name: 'Standard', bg: '#0C5A35', dome: '#168049', accent: '#F2C063' },
   { id: 'twilight', name: 'Twilight', bg: '#0F1528', dome: '#1A2448', accent: '#F2C063' },
   { id: 'red', name: 'Night red', bg: '#0C0404', dome: '#1E0808', accent: '#FF5B3D' },
   { id: 'amber', name: 'Amber', bg: '#0D0904', dome: '#241809', accent: '#FFB04A' },
@@ -412,7 +435,7 @@ const get = (k, d) => { try { const v = localStorage.getItem(P + k); return v ==
 const put = (k, v) => { try { localStorage.setItem(P + k, JSON.stringify(v)); } catch {} };
 
 const S = {
-  set: Object.assign({ theme: 'twilight', draw: 1, side: 'left', back: 'red' }, get('settings', {})),
+  set: Object.assign({ theme: 'standard', draw: 1, side: 'left', back: 'red' }, get('settings', {})),
   stats: C.normStats(get('stats', null)),
   statMode: 1,
   g: null,          // the game: { s, hist, ms, t0, started, won, bonus, auto }
@@ -424,7 +447,7 @@ const S = {
 if (S.set.draw !== 3) S.set.draw = 1;
 if (S.set.side !== 'right') S.set.side = 'left';
 if (S.set.back !== 'blue') S.set.back = 'red';
-if (!THEMES.some((t) => t.id === S.set.theme)) S.set.theme = 'twilight';
+if (!THEMES.some((t) => t.id === S.set.theme)) S.set.theme = 'standard';
 const saveSet = () => put('settings', S.set);
 const saveStats = () => put('stats', S.stats);
 
@@ -481,15 +504,17 @@ const PIPS = {
   9: [[0, 0], [2, 0], [0, 1 / 3], [2, 1 / 3], [1, .5], [0, 2 / 3], [2, 2 / 3], [0, 1], [2, 1]],
   10: [[0, 0], [2, 0], [1, 1 / 6], [0, 1 / 3], [2, 1 / 3], [0, 2 / 3], [2, 2 / 3], [1, 5 / 6], [0, 1], [2, 1]],
 };
-const PIPX = [29, 50, 71], PIPY0 = 36, PIPY1 = 85;
+// Pip columns as a share of the card width. Every pip is the same size, as on a printed deck, except on the 10, which has the most
+// to fit between the two corner suits, so its pips are a little smaller and its columns a little closer together.
 function faceHtml(id) {
   const sv = C.suit(id), r = C.rank(id), use = `<use href="#s${sv}"/>`;
+  const px = r === 10 ? [36, 50, 64] : [32, 50, 68], pk = r === 10 ? .15 : .18;
   let body;
-  if (r === 1) body = `<svg class="pip ace" style="left:50%;top:63%" viewBox="0 0 24 24" aria-hidden="true">${use}</svg>`;
-  else if (r >= 11) body = `<div class="court"><svg class="fig" viewBox="0 0 60 76" aria-hidden="true"><use href="#court-${'jqk'[r - 11]}"/></svg>` +
-    `<svg class="cs tl" viewBox="0 0 24 24" aria-hidden="true">${use}</svg><svg class="cs br" viewBox="0 0 24 24" aria-hidden="true">${use}</svg></div>`;
-  else body = PIPS[r].map(([c, v]) => `<svg class="pip${v > .5 ? ' flip' : ''}" style="left:${PIPX[c]}%;top:${(PIPY0 + (PIPY1 - PIPY0) * v).toFixed(1)}%" viewBox="0 0 24 24" aria-hidden="true">${use}</svg>`).join('');
-  return `<span class="idx"><span>${C.RANK_LABEL[r - 1]}</span><svg viewBox="0 0 24 24" aria-hidden="true">${use}</svg></span>${body}`;
+  if (r === 1) body = `<svg class="pip ace" style="left:50%;top:50%" viewBox="0 0 24 24" aria-hidden="true">${use}</svg>`;
+  else if (r >= 11) body = `<div class="court"><svg class="fig" viewBox="0 0 60 101" preserveAspectRatio="none" aria-hidden="true"><use href="#court-${'jqk'[r - 11]}"/></svg></div>`;
+  else body = PIPS[r].map(([c, v]) => `<svg class="pip${v > .5 ? ' flip' : ''}" style="--pk:${pk};--v:${+v.toFixed(4)};left:${px[c]}%" viewBox="0 0 24 24" aria-hidden="true">${use}</svg>`).join('');
+  const idx = (cls) => `<span class="idx${cls}${r === 10 ? ' t' : ''}"><span>${C.RANK_LABEL[r - 1]}</span><svg viewBox="0 0 24 24" aria-hidden="true">${use}</svg></span>`;
+  return `${idx('')}${idx(' br')}${body}`;
 }
 
 /* ---------- Game ---------- */
@@ -690,7 +715,7 @@ function sync() {
   if (root.dataset.o !== o) root.dataset.o = o;
   const st = $('#stage'), W = st.clientWidth, H = st.clientHeight;
   if (!W || !H || !S.g) return;
-  const L = C.layout({ W, H, land, flip: S.set.side === 'right' });
+  const L = C.layout({ W, H, flip: S.set.side === 'right' });
   S.L = L;
   const b = $('#board');
   b.style.setProperty('--cw', `${L.w.toFixed(1)}px`);
@@ -962,7 +987,7 @@ function openSettings() {
     <h3>Stats</h3>
     <p class="small">Played, wins and bests are kept on this phone only.</p>
     <div class="actions"><button class="btn" type="button" data-act="reset-stats">Reset stats</button></div>
-    <p class="small" style="margin-top:22px">Solitaire, release 2.</p>`);
+    <p class="small" style="margin-top:22px">Solitaire, release 4.</p>`);
 }
 function openWin(flags) {
   const g = S.g, s = g.s;

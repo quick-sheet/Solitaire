@@ -227,66 +227,48 @@ function statWin(st, draw, r) {
 }
 
 /* ---------- Table layout ----------
-   Works from the size of the play area, whether it is landscape and which side the stock is on.
-   Portrait puts stock, waste and the four foundations in one row above seven columns. Landscape puts
-   stock and waste in a rail on one side, the foundations in a rail on the other, and the columns between.
+   Works from the size of the play area and which side the stock is on. Portrait and landscape share one table:
+   stock, waste and the four foundations in a row above seven columns.
    With flip the stock side moves to the right (for right-handed play) and the foundations to the left;
    the seven columns never change places. L.dir says which way the draw-3 fan opens: +1 to the right of the
    waste slot, -1 to its left, so the fan always opens towards the middle of the table. */
 const CARD_RATIO = 1.4;
-const FAN = 0.26;
+const FAN = 0.29;   // how far each draw-3 waste card opens, as a share of the card width (enough to show a whole corner index, even a 10)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Gaps down a column as shares of the card height: face-down d, face-up u. Under pressure the face-down gaps shrink first (to dMin of d), then the face-up ones.
+const GAP = { d: 0.17, u: 0.36, dMin: 0.4 };
+const U_FLOOR = 0.21;   // the smallest face-up gap the layout plans for: enough to read the rank in the corner
+const U_FULL = 0.31;    // a face-up gap that shows the whole corner index, the rank and the small suit under it
 
+/* One table for every screen shape: stock and waste top left, foundations top right, seven columns below.
+   flip mirrors the top row (stock and waste on the right). A wide, short screen (a phone on its side) gets the same table with tighter spacing,
+   and its cards are sized by the height, so the board is centred with spare room either side. */
 function layout(o) {
-  const W = o.W, H = o.H, land = !!o.land, flip = !!o.flip, R = CARD_RATIO;
-  const base = land ? { d: 0.12, u: 0.30, f: 0.85 } : { d: 0.17, u: 0.36, f: 0.80 };
-  // tallest column possible: six face-down cards under a full king-to-ace run, squeezed to its floor
-  const worstK = 1 + 6 * base.d * base.f + 12 * base.u * base.f;
+  const W = o.W, H = o.H, flip = !!o.flip, R = CARD_RATIO, wide = W > H;
   const dir = flip ? -1 : 1;
-  let L;
-  if (!land) {
-    const pad = clamp(W * 0.02, 6, 16), gap = clamp(W * 0.016, 4, 12), rowK = 0.16;
-    const wW = (W - 2 * pad - 6 * gap) / 7;
-    const hMax = (H - 2 * pad) / (1 + rowK + worstK);
-    const w = Math.max(10, Math.min(wW, hMax / R, 120)), h = w * R;
-    const pitch = (W - 2 * pad - w) / 6, x = (c) => pad + c * pitch;
-    const tabY = pad + h + rowK * h, tabBottom = H - pad;
-    const cs = flip ? 6 : 0, cw = flip ? 5 : 1, cf = flip ? [0, 1, 2, 3] : [3, 4, 5, 6];
-    L = { land, flip, dir, w, h, pad, tabY, tabBottom, fan: w * FAN,
-      stock: { x: x(cs), y: pad }, waste: { x: x(cw), y: pad },
-      found: cf.map((c) => ({ x: x(c), y: pad })),
-      tab: [0, 1, 2, 3, 4, 5, 6].map((c) => ({ x: x(c), y: tabY })),
-      pitch };
-  } else {
-    const pad = clamp(H * 0.035, 6, 14), g = 10, gv = 0.08, railK = 1 + 2 * FAN;
-    let w = Math.min((H - 2 * pad) / worstK / R, (H - 2 * pad) / (4 + 3 * gv) / R, 120);
-    for (let n = 0; n < 3; n++) {
-      const tw = W - 2 * pad - railK * w - w - 2 * g;
-      w = Math.max(10, Math.min(w, (tw - 24) / 7));
-    }
-    const h = w * R, railL = railK * w, tabW = W - 2 * pad - railL - w - 2 * g;
-    const tabUsed = Math.min(tabW, w * 1.7 * 6 + w);
-    const total = railL + g + tabUsed + g + w, offX = pad + (W - 2 * pad - total) / 2;
-    const pitch = (tabUsed - w) / 6;
-    const wasteY = pad + h + gv * h, fan = w * FAN;
-    let railX, tabX, foundX;
-    if (!flip) { railX = offX; tabX = railX + railL + g; foundX = tabX + tabUsed + g; }
-    else { foundX = offX; tabX = foundX + w + g; railX = tabX + tabUsed + g; }
-    const sx = flip ? railX + 2 * fan : railX;   // flipped: the top waste card sits at the slot and older ones open to its left
-    L = { land, flip, dir, w, h, pad, tabY: pad, tabBottom: H - pad, fan,
-      stock: { x: sx, y: pad }, waste: { x: sx, y: wasteY },
-      found: [0, 1, 2, 3].map((q) => ({ x: foundX, y: pad + q * (h + gv * h) })),
-      tab: [0, 1, 2, 3, 4, 5, 6].map((c) => ({ x: tabX + c * pitch, y: pad })),
-      pitch, rail: { x: railX, w: railL } };
-  }
+  const pad = clamp(Math.min(W * 0.02, H * 0.03), 6, 16), gap = clamp(W * 0.016, 4, 12), rowK = wide ? 0.10 : 0.16;
+  // cards are sized so that six face-down under ten face-up (a king down to a four) fit with the gaps squeezed to their floor.
+  // On a wide, short screen they are also sized so that six face-down under eight face-up (a king down to a six) still shows every
+  // corner index whole. A longer run than these squeezes further, and pileYs always keeps the whole column on the table.
+  const worst = Math.max(6 * GAP.d * GAP.dMin + 9 * U_FLOOR, wide ? 6 * GAP.d * GAP.dMin + 7 * U_FULL : 0);
+  const wW = (W - 2 * pad - 6 * gap) / 7;
+  const hMax = (H - 2 * pad) / (2 + rowK + worst);
+  const w = Math.max(10, Math.min(wW, hMax / R, 120)), h = w * R;
+  const pitch = Math.min((W - 2 * pad - w) / 6, w * 1.7), offX = (W - (6 * pitch + w)) / 2;
+  const x = (c) => offX + c * pitch;
+  const tabY = pad + h + rowK * h, tabBottom = H - pad;
+  const cs = flip ? 6 : 0, cw = flip ? 5 : 1, cf = flip ? [0, 1, 2, 3] : [3, 4, 5, 6];
+  const L = { flip, dir, w, h, pad, tabY, tabBottom, fan: w * FAN, pitch,
+    stock: { x: x(cs), y: pad }, waste: { x: x(cw), y: pad },
+    found: cf.map((c) => ({ x: x(c), y: pad })),
+    tab: [0, 1, 2, 3, 4, 5, 6].map((c) => ({ x: x(c), y: tabY })) };
   // use spare height for roomier columns, but never so much that the tallest column stops fitting
-  const room = L.tabBottom - L.tabY - L.h;
-  const gaps1 = 6 * base.d * L.h + 12 * base.u * L.h;
-  const stretch = clamp(room / (gaps1 * base.f), 1, 1.4);
-  L.d = base.d * L.h * stretch;
-  L.u = base.u * L.h * stretch;
-  L.floor = base.f;
-  L.fs = Math.max(9, Math.min(L.w * 0.31, L.u * base.f * 0.9));
+  const room = tabBottom - tabY - h;
+  const stretch = clamp(room / ((6 * GAP.d + 12 * GAP.u) * h * 0.8), 1, 1.4);
+  L.d = GAP.d * h * stretch;
+  L.u = GAP.u * h * stretch;
+  L.dMin = GAP.dMin;
+  L.fs = Math.max(8, w * 0.24);   // corner rank size (the floor only matters on cards narrower than any phone gives)
   return L;
 }
 
@@ -297,18 +279,25 @@ function wasteX(L, rel, vis) {
   return L.dir > 0 ? L.waste.x + (vis - 1 - r) * L.fan : L.waste.x - r * L.fan;
 }
 
-// Heights of the cards in one column: n cards, the top k face up. Squeezes the gaps if the column would run out of room.
+// Heights of the cards in one column: n cards, the top k face up. If the column would run out of room the face-down gaps close up first
+// (to a floor), so the face-up cards keep their corners readable; only then do the face-up gaps shrink too.
 function pileYs(L, n, k) {
   const out = new Array(n);
   if (!n) return out;
-  const downs = Math.max(0, n - k), gaps = downs * L.d + Math.max(0, k - 1) * L.u, room = L.tabBottom - L.tabY - L.h;
-  const f = gaps > room && gaps > 0 ? Math.max(0, room / gaps) : 1;
+  const downs = Math.max(0, n - k), ups = Math.max(0, k - 1), room = L.tabBottom - L.tabY - L.h;
+  let d = L.d, u = L.u;
+  if (downs * d + ups * u > room) {
+    const dMin = L.d * L.dMin;
+    if (downs * dMin + ups * u <= room) d = (room - ups * u) / downs;
+    else if (downs * dMin >= room) { d = room / downs; u = 0; }
+    else { d = dMin; u = (room - downs * dMin) / ups; }
+  }
   let y = L.tabY;
-  for (let j = 0; j < n; j++) { out[j] = y; y += (j < n - k ? L.d : L.u) * f; }
+  for (let j = 0; j < n; j++) { out[j] = y; y += j < n - k ? d : u; }
   return out;
 }
 
 return { RANK_LABEL, RANK_NAME, SUIT_NAME, rank, suit, isRed, cardName, mulberry32, shuffled, deal, clone, movingCards, fitsTab, fitsFound,
   canMove, applyMove, drawCards, canDraw, isPointless, tapTarget, legalMoves, canAutoComplete, autoStep, isWon, timeBonus, validate,
-  newStats, normStats, statStart, statAbandon, statWin, layout, pileYs, wasteX, CARD_RATIO };
+  newStats, normStats, statStart, statAbandon, statWin, layout, pileYs, wasteX, CARD_RATIO, REV: 4 };
 });

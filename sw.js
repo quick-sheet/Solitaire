@@ -1,6 +1,6 @@
 // Service worker: offline support and instant updates.
 // Bump CACHE on every release, together with core.js?v= in index.html.
-const CACHE = 'solitaire-v2';
+const CACHE = 'solitaire-v4';
 const SHELL = ['./', 'index.html', 'core.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => e.waitUntil(
