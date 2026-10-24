@@ -55,7 +55,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webki
 
 /* the space: a lit wash, three slow clouds of colour, the canvas of light, and a fine grain */
 .wash{position:fixed;inset:0;background:radial-gradient(130% 75% at 50% 0%,var(--bg-2) 0%,var(--bg) 62%);transition:background .6s}
-.haze{position:fixed;inset:0;overflow:hidden;pointer-events:none}
+.haze{position:fixed;inset:0;overflow:hidden;pointer-events:none;opacity:.82;transition:opacity .25s linear}
 .haze i{position:absolute;width:110vmax;height:110vmax;border-radius:50%;will-change:transform}
 .haze i:nth-child(1){left:-55vmax;top:-45vmax;background:radial-gradient(closest-side,var(--h1),transparent);animation:d1 64s ease-in-out infinite alternate}
 .haze i:nth-child(2){right:-60vmax;top:5vh;background:radial-gradient(closest-side,var(--h2),transparent);animation:d2 83s ease-in-out infinite alternate}
@@ -317,7 +317,7 @@ main.dense .reveal{margin-top:10px}
   <p class="note" id="setNote"></p>
   <p class="about">A new word, quote and joke arrive each day when you open the app, with music composed on your phone to go with them. Pull the words down for another set, and use the arrows to look back. Every set stays on this phone.</p>
   <p class="credit">Built by Big Bear Binary</p>
-  <p class="credit">Release 4</p>
+  <p class="credit">Release 5</p>
   <button class="btn" data-act="closeSheet">Done</button>
 </dialog>
 
@@ -333,8 +333,8 @@ main.dense .reveal{margin-top:10px}
   <button class="btn quiet" id="insLater" data-act="closeSheet" hidden>Not now</button>
 </dialog>
 
-<script src="core.js?v=4"></script>
-<script src="sound.js?v=4"></script>
+<script src="core.js?v=5"></script>
+<script src="sound.js?v=5"></script>
 <script>
 'use strict';
 const $ = (s, r = document) => r.querySelector(s);
@@ -436,14 +436,18 @@ function fit() {
 
 /* ---------------- light field ---------------- */
 const Field = (() => {
-  const cv = $('#field'), g = cv.getContext('2d');
+  const cv = $('#field'), g = cv.getContext('2d'), hazeEl = document.querySelector('.haze');
   let W = 0, H = 0, motes = [], col = [222, 228, 245], blend = 'lighter', light = false, last = 0, raf = 0, glide = null;
+  let auraA = [92, 110, 180], auraB = [146, 118, 172];   // the theme's two haze colours: the touch tints between them
+  let E = 0, hazeShown = -1, motion = 0, glinting = 0;
+  const aura = { x: 0, y: 0, mix: 0.5, on: false };
   const blooms = [], trails = [], live = new Map(), holds = new Map(), pts = new Map();
   // Fingers' light follows the theme, gliding with the page's colours.
-  function colours(rgb, tone, ms) {
+  function colours(rgb, tone, ms, a1, a2) {
     blend = tone === 'light' ? 'source-over' : 'lighter'; light = tone === 'light';
-    if (!ms) { col = rgb.slice(); glide = null; return; }
-    glide = { from: col.slice(), to: rgb.slice(), t0: performance.now(), ms };
+    const to = [rgb, a1 || auraA, a2 || auraB];
+    if (!ms) { col = rgb.slice(); auraA = to[1].slice(); auraB = to[2].slice(); glide = null; return; }
+    glide = { from: [col.slice(), auraA.slice(), auraB.slice()], to, t0: performance.now(), ms };
   }
   function resize() {
     const dpr = Math.min(2, devicePixelRatio || 1);
@@ -451,20 +455,23 @@ const Field = (() => {
     cv.width = Math.round(nw * dpr); cv.height = Math.round(nh * dpr);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!motes.length || Math.abs(nw * nh - W * H) > W * H * 0.3) {
-      const n = Math.round(Math.min(110, Math.max(44, (nw * nh) / 4600)));
+      const n = Math.round(Math.min(120, Math.max(48, (nw * nh) / 4200)));
       motes = Array.from({ length: n }, () => ({ x: Math.random() * nw, y: Math.random() * nh, r: 0.45 + Math.random() * 1.1, a: 0.1 + Math.random() * 0.42,
-        ph: Math.random() * 6.283, tw: 0.4 + Math.random() * 1.2, sp: 0.003 + Math.random() * 0.009, vx: 0, vy: 0 }));
+        ph: Math.random() * 6.283, tw: 0.4 + Math.random() * 1.2, sp: 0.003 + Math.random() * 0.009, vx: 0, vy: 0, gl: 0, rot: Math.random() < 0.5 ? 0 : 0.785 }));
     }
     W = nw; H = nh;
+    if (!aura.on) { aura.x = W / 2; aura.y = H / 2; }
   }
-  const rgb = () => `rgb(${col[0]},${col[1]},${col[2]})`;
-  const rgba = (a) => `rgba(${col[0]},${col[1]},${col[2]},${a})`;
+  const mixc = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  const rgbS = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const rgbaS = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   function frame(t) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(50, t - (last || t)); last = t;
+    const n = dt / 16.7;                       // frames' worth of time, so it feels the same at 60 or 120 Hz
     if (glide) {
       const k = Math.min(1, (performance.now() - glide.t0) / glide.ms), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      col = glide.from.map((v, i) => Math.round(v + (glide.to[i] - v) * e));
+      [col, auraA, auraB] = glide.from.map((f, i) => mixc(f, glide.to[i], e));
       if (k >= 1) glide = null;
     }
     const still = reducedMQ.matches;
@@ -472,20 +479,77 @@ const Field = (() => {
     g.clearRect(0, 0, W, H);
     g.globalCompositeOperation = blend;
     const k = light ? 0.75 : 1;
-    // motes, drifting upward and stirred by fingers
-    g.fillStyle = rgb();
+
+    // How lively the touch is: speed and firmness of every finger, quick to rise and slow to settle.
+    let target = 0, lead = null;
+    for (const p of pts.values()) {
+      p.e = Math.min(1.4, (Math.min(1, Math.hypot(p.vx, p.vy) / 1.6) * 0.85 + 0.15) * p.f);
+      if (!lead || p.e > lead.e) lead = p;
+      target = Math.max(target, p.e);
+    }
+    E += (target - E) * Math.min(1, (target > E ? 0.22 : 0.022) * n);
+    if (E < 0.002) E = 0;
+    if (lead) { aura.on = true; aura.x += (lead.x - aura.x) * Math.min(1, 0.25 * n); aura.y += (lead.y - aura.y) * Math.min(1, 0.25 * n); aura.mix += (lead.x / W - aura.mix) * Math.min(1, 0.08 * n); }
+    // The background answers too: the haze lifts, and a soft wash of the theme's colours follows the finger.
+    const hz = Math.round((0.82 + 0.18 * Math.min(1, E)) * 100) / 100;
+    if (hz !== hazeShown && hazeEl) { hazeEl.style.opacity = hz; hazeShown = hz; }
+    if (E > 0.01 && aura.on) {
+      const c = mixc(auraA, auraB, Math.max(0, Math.min(1, aura.mix))), rad = 240 + 230 * Math.min(1.2, E);
+      const gr = g.createRadialGradient(aura.x, aura.y, 0, aura.x, aura.y, rad);
+      gr.addColorStop(0, rgbaS(c, (light ? 0.42 : 0.34) * Math.min(1, E)));
+      gr.addColorStop(0.55, rgbaS(c, (light ? 0.16 : 0.12) * Math.min(1, E)));
+      gr.addColorStop(1, rgbaS(c, 0));
+      g.globalAlpha = 1; g.fillStyle = gr; g.fillRect(aura.x - rad, aura.y - rad, rad * 2, rad * 2);
+    }
+
+    // Stars: drift upward, get pushed, swirled and carried by fingers, and glint harder the livelier the touch.
+    const damp = Math.pow(0.955, n), fade = Math.pow(0.952, n);
+    motion = 0; glinting = 0;
+    g.fillStyle = rgbS(col); g.strokeStyle = rgbS(col); g.lineCap = 'round';
     for (const m of motes) {
       if (!still) { m.y -= m.sp * dt; m.x += Math.sin(t * 0.00021 + m.ph) * 0.005 * dt; }
       for (const p of pts.values()) {
-        const dx = m.x - p.x, dy = m.y - p.y, d2 = dx * dx + dy * dy;
-        if (d2 < 25600 && d2 > 1) { const d = Math.sqrt(d2), f = 1 - d / 160, push = f * f * 0.05; m.vx += (dx / d) * push - (dy / d) * push * 0.35; m.vy += (dy / d) * push + (dx / d) * push * 0.35; }
+        const R = 150 + 120 * Math.min(1, p.e), dx = m.x - p.x, dy = m.y - p.y, d2 = dx * dx + dy * dy;
+        if (d2 < R * R && d2 > 1) {
+          const d = Math.sqrt(d2), f = 1 - d / R, ff = f * f;
+          m.gl = Math.max(m.gl, f * (0.2 + 0.8 * Math.min(1, p.e)));
+          if (!still) {
+            const e2 = Math.min(1.2, p.e) * Math.min(1.2, p.e);   // gentle for slow fingers, much stronger for quick ones
+            const push = ff * (0.02 + 0.3 * e2) * n;
+            m.vx += (dx / d) * push - (dy / d) * push * 0.4;
+            m.vy += (dy / d) * push + (dx / d) * push * 0.4;
+            const carry = ff * 2.4 * e2 * n;                      // swept along in the finger's wake
+            m.vx += p.vx * carry; m.vy += p.vy * carry;
+          }
+        }
       }
-      m.x += m.vx * dt * 0.06; m.y += m.vy * dt * 0.06; m.vx *= 0.955; m.vy *= 0.955;
+      // ripples from a tap pass through the stars and nudge them outward
+      for (const b of blooms) {
+        const age = t - b.t; if (age < 0 || age > 1500) continue;
+        const ring = 8 + 200 * (1 - Math.pow(1 - age / 2500, 3)), dx = m.x - b.x, dy = m.y - b.y, d = Math.hypot(dx, dy) || 1;
+        if (Math.abs(d - ring) < 16) {
+          const s = (1 - Math.abs(d - ring) / 16) * (1 - age / 1500) * b.p;
+          m.gl = Math.max(m.gl, s * 0.9);
+          if (!still) { m.vx += (dx / d) * s * 0.5 * n; m.vy += (dy / d) * s * 0.5 * n; }
+        }
+      }
+      const sp = Math.hypot(m.vx, m.vy);
+      if (sp > 18) { m.vx *= 18 / sp; m.vy *= 18 / sp; }
+      m.x += m.vx * dt * 0.06; m.y += m.vy * dt * 0.06; m.vx *= damp; m.vy *= damp; m.gl *= fade;
+      motion += sp;
       if (m.y < -4) { m.y = H + 4; m.x = Math.random() * W; } else if (m.y > H + 6) m.y = -4;
       if (m.x < -6) m.x = W + 4; else if (m.x > W + 6) m.x = -4;
-      g.globalAlpha = m.a * k * (still ? 0.85 : 0.62 + 0.38 * Math.sin(t * 0.0011 * m.tw + m.ph));
-      g.beginPath(); g.arc(m.x, m.y, m.r, 0, 6.283); g.fill();
+      const twinkle = still ? 0.85 : 0.62 + 0.38 * Math.sin(t * 0.0011 * m.tw + m.ph);
+      g.globalAlpha = Math.min(1, m.a * twinkle + m.gl * 0.85) * k;
+      g.beginPath(); g.arc(m.x, m.y, m.r * (1 + m.gl * 1.3), 0, 6.283); g.fill();
+      if (m.gl > 0.28) {                       // a four-point glint
+        glinting++;
+        const L = 2 + 9 * m.gl, c = Math.cos(m.rot) * L, s2 = Math.sin(m.rot) * L;
+        g.globalAlpha = Math.min(1, (m.gl - 0.2) * 0.9) * k; g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(m.x - c, m.y - s2); g.lineTo(m.x + c, m.y + s2); g.moveTo(m.x + s2, m.y - c); g.lineTo(m.x - s2, m.y + c); g.stroke();
+      }
     }
+
     // blooms and rings where a finger lands
     for (let i = blooms.length - 1; i >= 0; i--) {
       const b = blooms[i], age = t - b.t, a1 = age / 1900;
@@ -494,19 +558,18 @@ const Field = (() => {
       if (a1 < 1) {
         const e = 1 - Math.pow(1 - a1, 3), rad = still ? 70 : 16 + 110 * e;
         const gr = g.createRadialGradient(b.x, b.y, 0, b.x, b.y, rad);
-        gr.addColorStop(0, rgba(0.3 * k * b.v * Math.pow(1 - a1, 1.7))); gr.addColorStop(1, rgba(0));
+        gr.addColorStop(0, rgbaS(col, 0.3 * k * b.v * Math.pow(1 - a1, 1.7))); gr.addColorStop(1, rgbaS(col, 0));
         g.globalAlpha = 1; g.fillStyle = gr; g.beginPath(); g.arc(b.x, b.y, rad, 0, 6.283); g.fill();
       }
       const a2 = age / 2500;
       if (!still && a2 < 1) {
         const e2 = 1 - Math.pow(1 - a2, 3);
-        g.globalAlpha = 0.5 * k * b.v * Math.pow(1 - a2, 2.2); g.strokeStyle = rgb(); g.lineWidth = 1;
+        g.globalAlpha = 0.5 * k * b.v * Math.pow(1 - a2, 2.2); g.strokeStyle = rgbS(col); g.lineWidth = 1;
         g.beginPath(); g.arc(b.x, b.y, 8 + 200 * e2, 0, 6.283); g.stroke();
       }
     }
-    g.fillStyle = rgb();
     // trails of light behind a moving finger
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = rgb();
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = rgbS(col);
     for (let ti = trails.length - 1; ti >= 0; ti--) {
       const tr = trails[ti], P = tr.pts;
       while (P.length && t - P[0].t > 1600) P.shift();
@@ -516,7 +579,7 @@ const Field = (() => {
           const p0 = P[i - 1], p1 = P[i], age = (t - p1.t) / 1600;
           if (age >= 1) continue;
           const f = Math.pow(1 - age, 1.6), pm = P[i - 2] || p0;
-          g.globalAlpha = pass[1] * f * k; g.lineWidth = pass[0] * (0.35 + 0.65 * f);
+          g.globalAlpha = pass[1] * f * k * (1 + 0.6 * Math.min(1, E)); g.lineWidth = pass[0] * (0.35 + 0.65 * f);
           g.beginPath(); g.moveTo((pm.x + p0.x) / 2, (pm.y + p0.y) / 2); g.quadraticCurveTo(p0.x, p0.y, (p0.x + p1.x) / 2, (p0.y + p1.y) / 2); g.stroke();
         }
       }
@@ -525,7 +588,7 @@ const Field = (() => {
     for (const h of holds.values()) {
       const age = t - h.t, gr0 = Math.min(1, age / 1100), rad = 26 + 52 * gr0 + (still ? 0 : 4 * Math.sin(t * 0.004));
       const gr = g.createRadialGradient(h.x, h.y, 0, h.x, h.y, rad);
-      gr.addColorStop(0, rgba(0.22 * gr0 * k)); gr.addColorStop(1, rgba(0));
+      gr.addColorStop(0, rgbaS(col, 0.22 * gr0 * k)); gr.addColorStop(1, rgbaS(col, 0));
       g.globalAlpha = 1; g.fillStyle = gr; g.beginPath(); g.arc(h.x, h.y, rad, 0, 6.283); g.fill();
     }
     g.globalAlpha = 1;
@@ -534,12 +597,14 @@ const Field = (() => {
   function stop() { cancelAnimationFrame(raf); raf = 0; }
   return {
     colours, resize, start, stop,
-    bloom(x, y, v = 1) { blooms.push({ x, y, t: performance.now(), v }); if (blooms.length > 24) blooms.shift(); },
-    point(id, x, y) { if (x == null) pts.delete(id); else pts.set(id, { x, y }); },
+    // power: how firmly the finger landed (about 0.5 light to 1.8 firm)
+    bloom(x, y, v = 1, power = 1) { blooms.push({ x, y, t: performance.now(), v, p: power }); if (blooms.length > 24) blooms.shift(); E = Math.max(E, 0.3 * power * v); },
+    point(id, x, y, vx = 0, vy = 0, f = 1) { if (x == null) pts.delete(id); else { const p = pts.get(id) || { e: 0 }; Object.assign(p, { x, y, vx, vy, f }); pts.set(id, p); } },
     trail(id, x, y) { let tr = live.get(id); if (!tr) { tr = { pts: [], done: false }; live.set(id, tr); trails.push(tr); } tr.pts.push({ x, y, t: performance.now() }); if (tr.pts.length > 140) tr.pts.shift(); },
     trailEnd(id) { const tr = live.get(id); if (tr) { tr.done = true; live.delete(id); } },
     hold(id, x, y) { if (x == null) holds.delete(id); else { const h = holds.get(id); if (h) { h.x = x; h.y = y; } else holds.set(id, { x, y, t: performance.now() }); } },
     get active() { return trails.length + holds.size + blooms.length; },
+    stats() { return { E: +E.toFixed(3), glinting, motion: +motion.toFixed(1), haze: hazeShown, aura: rgbS(mixc(auraA, auraB, Math.max(0, Math.min(1, aura.mix)))), mix: +aura.mix.toFixed(2) }; },
   };
 })();
 
@@ -938,6 +1003,17 @@ function startPlay(g, now) {
   if (audioReady() && A.running) { A.voiceStart(g.id, g.note, g.pan); g.voice = true; }
 }
 function swell(g) { if (g.voice && !g.swelled) { A.voiceSwell(g.id, 1); g.swelled = true; } }
+// How firmly a finger presses, from about 0.5 (light) to 1.8 (firm): its pressure where the phone reports one,
+// and how wide the fingertip spreads. 0.5 is what phones report when they can't measure pressure.
+function forceOf(e) {
+  let f = 1;
+  if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+    if (e.pressure > 0 && e.pressure !== 0.5) f *= 0.55 + e.pressure * 0.9;
+    const w = Math.max(e.width || 0, e.height || 0);
+    if (w > 2) f *= Math.max(0.75, Math.min(1.5, w / 24));
+  }
+  return Math.max(0.5, Math.min(1.8, f));
+}
 
 document.addEventListener('pointerdown', (e) => {
   if (e.button > 0 || isControl(e.target) || document.querySelector('dialog[open]')) return;
@@ -945,18 +1021,18 @@ document.addEventListener('pointerdown', (e) => {
   ensureAudio();
   const onText = !!e.target.closest('.blk, .empty');
   const onWord = !!e.target.closest('#w');
-  const g = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), lastT: performance.now(), lastX: e.clientX, vx: 0,
+  const g = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), lastT: performance.now(), lastX: e.clientX, lastY: e.clientY, vx: 0, vy: 0, f: forceOf(e),
     onText, onWord, mode: 'pending', note: Core.touchMidi(pieceNow(), 1 - e.clientY / innerHeight), pan: (e.clientX / innerWidth) * 1.4 - 0.7, voice: false, swelled: false };
   G.set(e.pointerId, g);
-  Field.point(g.id, g.x, g.y);
+  Field.point(g.id, g.x, g.y, 0, 0, g.f);
   if (!onText) {
-    Field.bloom(g.x, g.y, 1); pluckAt(g.x, g.y, 0.9); buzz('tap');
+    Field.bloom(g.x, g.y, 1, g.f); pluckAt(g.x, g.y, 0.75 + 0.15 * g.f); buzz('tap');
     startPlay(g);
   }
   g.holdTimer = setTimeout(() => {
     if (!G.has(g.id) || (g.mode !== 'pending' && g.mode !== 'play')) return;
     if (Math.hypot(g.x - g.x0, g.y - g.y0) > SLOP) return;
-    if (g.mode === 'pending') { Field.bloom(g.x, g.y, 0.8); pluckAt(g.x, g.y, 0.8); buzz('tap'); startPlay(g); }
+    if (g.mode === 'pending') { Field.bloom(g.x, g.y, 0.8, g.f); pluckAt(g.x, g.y, 0.8); buzz('tap'); startPlay(g); }
     Field.hold(g.id, g.x, g.y); swell(g);
   }, HOLD_MS);
 }, { passive: true });
@@ -965,14 +1041,16 @@ document.addEventListener('pointermove', (e) => {
   const g = G.get(e.pointerId); if (!g) return;
   const now = performance.now();
   g.x = e.clientX; g.y = e.clientY;
-  const dtm = Math.max(1, now - g.lastT); g.vx = 0.7 * g.vx + 0.3 * ((g.x - g.lastX) / dtm); g.lastX = g.x; g.lastT = now;
-  Field.point(g.id, g.x, g.y);
+  const dtm = Math.max(1, now - g.lastT);
+  g.vx = 0.7 * g.vx + 0.3 * ((g.x - g.lastX) / dtm); g.vy = 0.7 * g.vy + 0.3 * ((g.y - g.lastY) / dtm);
+  g.lastX = g.x; g.lastY = g.y; g.lastT = now; g.f = 0.8 * g.f + 0.2 * forceOf(e);
+  Field.point(g.id, g.x, g.y, g.mode === 'pull' ? 0 : g.vx, g.mode === 'pull' ? 0 : g.vy, g.f);
   const dx = g.x - g.x0, dy = g.y - g.y0;
   if (g.mode === 'pending') {
     if (Math.hypot(dx, dy) < SLOP) return;
     if (g.onText && G.size === 1 && dy > 0 && dy > Math.abs(dx) * 1.2 && !S.busy && !S.loading && $('#day').scrollTop <= 0) { g.mode = 'pull'; $('#inner').style.transition = 'none'; }
     else if (g.onText && $('#day').classList.contains('scrolls') && Math.abs(dy) > Math.abs(dx)) { g.mode = 'scroll'; }
-    else { Field.bloom(g.x0, g.y0, 0.7); pluckAt(g.x0, g.y0, 0.75); startPlay(g); }
+    else { Field.bloom(g.x0, g.y0, 0.7, g.f); pluckAt(g.x0, g.y0, 0.75); startPlay(g); }
   }
   if (g.mode === 'pull') {
     const shown = Math.max(0, Core.resist(dy * 1.6) * 1.1), k = shown / PULL_AT;
@@ -997,8 +1075,8 @@ function endPointer(e, cancelled) {
   const g = G.get(e.pointerId); if (!g) return;
   G.delete(e.pointerId); clearTimeout(g.holdTimer);
   Field.point(g.id, null); Field.hold(g.id, null);
-  if (g.mode === 'pending' && !cancelled && g.onWord) { Field.bloom(g.x, g.y, 0.6); buzz('tap'); sayWord(); }
-  else if (g.mode === 'pending' && !cancelled) { Field.bloom(g.x, g.y, 0.9); pluckAt(g.x, g.y, 0.85); buzz('tap'); }
+  if (g.mode === 'pending' && !cancelled && g.onWord) { Field.bloom(g.x, g.y, 0.6, g.f); buzz('tap'); sayWord(); }
+  else if (g.mode === 'pending' && !cancelled) { Field.bloom(g.x, g.y, 0.9, g.f); pluckAt(g.x, g.y, 0.7 + 0.15 * g.f); buzz('tap'); }
   if (g.mode === 'play') { Field.trailEnd(g.id); if (g.voice && A) A.voiceEnd(g.id); }
   if (g.mode === 'pull') {
     if (!cancelled && g.ready) { buzz('page'); refresh(); } else { springBack(); pullRing(''); }
@@ -1109,7 +1187,7 @@ function applyPalette(animate) {
   r.dataset.tone = pal.tone;
   for (const [k, v] of Object.entries(pal.vars)) r.style.setProperty(k, v);
   $('meta[name=theme-color]').setAttribute('content', pal.bg);
-  Field.colours(pal.glow, pal.tone, animate ? 1600 : 0);
+  Field.colours(pal.glow, pal.tone, animate ? 1600 : 0, pal.rgb.h1[0], pal.rgb.h2[0]);
   put('pal', { tone: pal.tone, vars: pal.vars }); put('themeN', S.themeN);
   if (!animate) { void r.offsetWidth; r.classList.remove('instant'); }
   document.querySelectorAll('[data-act=tone]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === S.tone)));
